@@ -3,5 +3,10 @@
 import PackageDescription
 
 let package = Package(
-    name: "swift-optparse-applicative"
+    name: "swift-optparse-applicative",
+    targets: [],
+    dependencies: [
+        .Package(url: "https://github.com/antitypical/Result.git",
+                 majorVersion: 3)
+    ]
 )
