@@ -35,32 +35,39 @@ struct Opt<A> {
     let metadata: OptProperties<A>
 }
 
-protocol Parser {
+/* sealed */ protocol Parser {
     associatedtype A
 }
-enum UnusedParser<T>: Parser { typealias A = T }
+// TODO: How do you make a FuncParser??
 protocol FuncParser: Parser {
     associatedtype Input
     associatedtype Output
 }
-enum UnusedFuncParser<T>: FuncParser {
-    typealias A = (T) -> T
-
-    typealias Input = T
-    typealias Output = T
-}
-indirect enum ConcParser<T, P: Parser, F: FuncParser, U: Parser>: Parser
-        where P.A == T, F.Output == T, F.Input == U.A {
+struct NilP<T>: Parser {
     typealias A = T
+}
+struct OptP<T>: Parser {
+    typealias A = Opt<T>
     
-    case nilP
-    case OptP(Opt<A>)
-    case AltP(primary: P, fallback: P)
-    case MultP(f: F, u: U)
-    // TODO: How to represent this?
-    /* case Bind(p: Parser<U>, f: (U) -> Parser<A>) */
+    let opt: Opt<T>
+}
+struct AltP<P1: Parser, P2: Parser>: Parser
+    where P1.A == P2.A {
+    typealias A = P1.A
     
-    static func Nil<A>() -> ConcParser<A, UnusedParser<A>, UnusedFuncParser<A>, UnusedParser<A>> {
-        return .nilP
-    }
+    let p1: P1
+    let p2: P2
+}
+struct MultP<P1: FuncParser, P2: Parser>: Parser
+    where P1.Input == P2.A {
+    typealias A = P1.Output
+    
+    let p1: P1
+    let p2: P2
+}
+struct BindP<P1: Parser, P2: Parser>: Parser {
+    typealias A = P2.A
+    
+    let p1: P1
+    let f: (P1.A) -> P2
 }
