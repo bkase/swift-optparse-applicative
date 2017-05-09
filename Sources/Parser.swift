@@ -30,44 +30,37 @@ struct OptProperties<A> {
     let metaVar: String
     let showDefault: String?
 }
-
-
-/* A shitty approximation of a GADT */
-protocol Parser {
-    associatedtype Value
-}
-extension Parser {
-    func map<B, PB: Parser>(_ f: (Value) -> B) -> PB
-        where PB.Value == B {
-            fatalError("This may not be possible?")
-        /*if let n = self as? Nil<Value> {
-            return Nil<B>(a: n.a.map(f))
-        }*/
-    }
-}
-struct Nil<A>: Parser/*<A>*/ {
-    typealias Value = A
-    let a: A?
-}
-struct Opt<A>: Parser/*<A>*/ {
-    typealias Value = A
+struct Opt<A> {
     let main: OptReader<A>
     let metadata: OptProperties<A>
 }
-struct Alt<A, P: Parser>: Parser/*<A>*/ where P.Value == A {
-    typealias Value = A
-    let p1: P
-    let p2: P
+
+protocol Parser {
+    associatedtype A
 }
-struct Mult<A, B, PAB: Parser, PA: Parser>: Parser/*<B>*/
-    where PAB.Value == (A) -> B, PA.Value == A {
-    typealias Value = B
-    let p1: PAB
-    let p2: PA
+enum UnusedParser<T>: Parser { typealias A = T }
+protocol FuncParser: Parser {
+    associatedtype Input
+    associatedtype Output
 }
-struct Bind<A, B, PA: Parser, PB: Parser>: Parser/*<B>*/
-    where PA.Value == A, PB.Value == B {
-    typealias Value = B
-    let p: PA
-    let f: (A) -> PB
+enum UnusedFuncParser<T>: FuncParser {
+    typealias A = (T) -> T
+
+    typealias Input = T
+    typealias Output = T
+}
+indirect enum ConcParser<T, P: Parser, F: FuncParser, U: Parser>: Parser
+        where P.A == T, F.Output == T, F.Input == U.A {
+    typealias A = T
+    
+    case nilP
+    case OptP(Opt<A>)
+    case AltP(primary: P, fallback: P)
+    case MultP(f: F, u: U)
+    // TODO: How to represent this?
+    /* case Bind(p: Parser<U>, f: (U) -> Parser<A>) */
+    
+    static func Nil<A>() -> ConcParser<A, UnusedParser<A>, UnusedFuncParser<A>, UnusedParser<A>> {
+        return .nilP
+    }
 }
