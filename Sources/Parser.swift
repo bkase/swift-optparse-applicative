@@ -85,9 +85,8 @@ infix operator <|>: AdditionPrecedence
     func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B>
 }
 extension Parser {
-    func ap<I, O, PF: Parser>(f: PF) -> MultP<I, O, PF, Self>
-            where PF.A == (I) -> O, I == A {
-        return MultP<I, O, PF, Self>(p1: f, p2: self)
+    func ap<O>(f: AnyParser<(A) -> O>) -> MultP<A, O> {
+        return MultP<A, O>(p1: f, p2: AnyParser(self))
     }
     static func point(_ a: A) -> AnyParser<A> {
         return AnyParser<A>(NilP(v: .some(a)))
@@ -95,11 +94,11 @@ extension Parser {
     static func empty() -> AnyParser<A> {
         return AnyParser<A>(NilP(v: nil))
     }
-    static func <|><P2: Parser>(lhs: Self, rhs: P2) -> AltP<Self, P2> where Self.A == P2.A {
+    static func <|><P2: Parser>(lhs: Self, rhs: P2) -> AltP<Self.A> where P2.A == Self.A {
         return lhs.plus(rhs)
     }
-    func plus<P2: Parser>(_ b: P2) -> AltP<Self, P2> where Self.A == P2.A {
-        return AltP(p1: self, p2: b)
+    func plus<P2: Parser>(_ b: P2) -> AltP<Self.A> where Self.A == P2.A {
+        return AltP(p1: AnyParser(self), p2: AnyParser(b))
     }
     func many() -> AnyParser<[A]> {
         let f: (A?) -> AnyParser<[A]> = { (x: A?) -> AnyParser<[A]> in
@@ -112,10 +111,10 @@ extension Parser {
                 return p
             }
         }
-        return BindP<AnyParser<A?>, AnyParser<[A]>>(
-            p1: optional(),
+        return AnyParser(BindP<A?, [A]>(
+            p1: self.optional(),
             f: f
-        )
+        ))
     }
     func optional() -> AnyParser<A?> {
         return AnyParser(map{ .some($0) } <|> AnyParser.point(nil))
@@ -153,39 +152,37 @@ struct OptP<T>: Parser {
     
     let opt: Opt<T>
 }
-struct AltP<P1: Parser, P2: Parser>: Parser
-    where P1.A == P2.A {
-    typealias A = P1.A
+struct AltP<T>: Parser {
+    typealias A = T
     
-    let p1: P1
-    let p2: P2
+    let p1: AnyParser<A>
+    let p2: AnyParser<A>
     
     func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(AltP<AnyParser<B>, AnyParser<B>>(p1: p1.map(f), p2: p2.map(f)))
+        return AnyParser<B>(AltP<B>(p1: p1.map(f), p2: p2.map(f)))
     }
 }
-struct MultP<I, O, P1: Parser, P2: Parser>: Parser
-    where P1.A == (I) -> O, P2.A == I {
+struct MultP<I, O>: Parser {
     typealias A = O
     
-    let p1: P1
-    let p2: P2
+    let p1: AnyParser<(I) -> O>
+    let p2: AnyParser<I>
     
     func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(MultP<I,B,AnyParser<(I)->B>,P2>(
+        return AnyParser<B>(MultP<I,B>(
             p1: p1.map{ iToO in { i in f(iToO(i)) } },
             p2: p2
         ))
     }
 }
-struct BindP<P1: Parser, P2: Parser>: Parser {
-    typealias A = P2.A
+struct BindP<I, O>: Parser {
+    typealias A = O
     
-    let p1: P1
-    let f: (P1.A) -> P2
+    let p1: AnyParser<I>
+    let f: (I) -> AnyParser<O>
     
     func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(BindP<P1, AnyParser<B>>(
+        return AnyParser<B>(BindP<I, B>(
             p1: p1,
             f: { p1a in self.f(p1a).map(f) }
         ))
