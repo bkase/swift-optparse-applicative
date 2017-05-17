@@ -123,14 +123,14 @@ extension Parser {
 struct AnyParser<T>: Parser {
     typealias A = T
     
-    let _map: ((T) -> Any) -> AnyParser<Any>
+    // TODO: How to do this?
+    let _map<B>: ((T) -> B) -> AnyParser<B>
     
     init<P: Parser>(_ parser: P) where P.A == T {
         _map = parser.map
     }
     func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        // TODO: How to do this?
-        return _map(f) as! AnyParser<B>
+        return _map(f)
     }
 }
 struct NilP<T>: Parser {
