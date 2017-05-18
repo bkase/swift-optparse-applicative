@@ -50,141 +50,87 @@ struct Opt<A> {
     }
 }
 
-/*protocol ParserM {
-    associatedtype R
-    func run<X>(_ f: (R) -> AnyParserM<X>) -> AnyParserM<X>
-}
-extension ParserM {
-    func flatMap<B>(f: @escaping (R) -> AnyParserM<B>) -> AnyParserM<B> {
-        let g = f
-        return AnyParserM<B>{ self.run{ x in g(x).run(f) } }
-    }
-}
-struct AnyParserM<T>: ParserM {
-    func run<X>(_ f: (R) -> AnyParserM<X>) -> AnyParserM<X> {
-        return _run(f) as! AnyParserM<X>
-    }
-
-    typealias R = T
-    let _run: ((R) -> AnyParserM<Any>) -> AnyParserM<Any>
-    
-    init<PM: ParserM>(_ parser: PM) where PM.R == R {
-        _run = parser.run
-    }
-    
-    init<T>(_ run: @escaping ((T) -> AnyParserM<Any>) -> AnyParserM<Any>) {
-        _run = run
-    }
-}*/
-
-// ----
-
 infix operator <|>: AdditionPrecedence
-/* sealed */ protocol Parser {
-    associatedtype A
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B>
-}
-extension Parser {
-    func ap<O>(f: AnyParser<(A) -> O>) -> MultP<A, O> {
-        return MultP<A, O>(p1: f, p2: AnyParser(self))
-    }
-    static func point(_ a: A) -> AnyParser<A> {
-        return AnyParser<A>(NilP(v: .some(a)))
-    }
-    static func empty() -> AnyParser<A> {
-        return AnyParser<A>(NilP(v: nil))
-    }
-    static func <|><P2: Parser>(lhs: Self, rhs: P2) -> AltP<Self.A> where P2.A == Self.A {
-        return lhs.plus(rhs)
-    }
-    func plus<P2: Parser>(_ b: P2) -> AltP<Self.A> where Self.A == P2.A {
-        return AltP(p1: AnyParser(self), p2: AnyParser(b))
-    }
-    func many() -> AnyParser<[A]> {
-        let f: (A?) -> AnyParser<[A]> = { (x: A?) -> AnyParser<[A]> in
-            switch x {
-            case .none:
-                let p: AnyParser<[A]> = AnyParser<[A]>.point([])
-                return p
-            case let .some(x):
-                let p: AnyParser<[A]> = self.many().map{ [x] + $0 }
-                return p
-            }
-        }
-        return AnyParser(BindP<A?, [A]>(
-            p1: self.optional(),
-            f: f
-        ))
-    }
-    func optional() -> AnyParser<A?> {
-        return AnyParser(map{ .some($0) } <|> AnyParser.point(nil))
-    }
-}
-struct AnyParser<T>: Parser {
-    typealias A = T
+
+indirect enum Parser<A> {
+    case nilP(A?)
+    case optP(Opt<A>)
+    case altP(attempt: Parser<A>, fallback: Parser<A>)
+    case _multP(pf: Parser<(Any) -> A>, input: Parser<Any>)
+    case _bindP(pIn: Parser<Any>, inToPa: (Any) -> Parser<A>)
     
-    // TODO: How to do this?
-    let _map<B>: ((T) -> B) -> AnyParser<B>
-    
-    init<P: Parser>(_ parser: P) where P.A == T {
-        _map = parser.map
-    }
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return _map(f)
-    }
-}
-struct NilP<T>: Parser {
-    typealias A = T
-    
-    let v: A?
-    func map<B>(_ f: @escaping (T) -> B) -> AnyParser<B> {
-        return AnyParser<B>(NilP<B>(v: v.map(f)))
-    }
-}
-struct OptP<T>: Parser {
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(
-            OptP<B>(opt: self.opt.map(f))
+    static func multP<In>(pf: Parser<(In) -> A>, input: Parser<In>) -> Parser<A> {
+        return ._multP(
+            pf: pf.map{ inToA in
+                { any in inToA(any as! In) }
+            },
+            input: input.map{ $0 as Any }
         )
     }
+    
+    static func bindP<In>(pIn: Parser<In>, inToPa: @escaping (In) -> Parser<A>) -> Parser<A> {
+        return ._bindP(
+            pIn: pIn.map{ $0 as Any },
+            inToPa: { any in inToPa(any as! In) }
+        )
+    }
+    
+    func map<B>(_ f: @escaping (A) -> B) -> Parser<B> {
+        switch self {
+        case let .nilP(v):
+            return .nilP(v.map(f))
+        case let .optP(opt):
+            return .optP(opt.map(f))
+        case let .altP(attempt, fallback):
+            return .altP(
+                attempt: attempt.map(f),
+                fallback: fallback.map(f)
+            )
+        case let ._multP(pf, input):
+            return ._multP(
+                pf: pf.map{ inToA in { i in f(inToA(i)) } },
+                input: input
+            )
+        case let ._bindP(pIn, inToPa):
+            return ._bindP(
+                pIn: pIn,
+                inToPa: { i in inToPa(i).map(f) }
+            )
+        }
+    }
+}
 
-    typealias A = T
-    
-    let opt: Opt<T>
-}
-struct AltP<T>: Parser {
-    typealias A = T
-    
-    let p1: AnyParser<A>
-    let p2: AnyParser<A>
-    
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(AltP<B>(p1: p1.map(f), p2: p2.map(f)))
+extension Parser {
+    func ap<T>(f: Parser<(A) -> T>) -> Parser<T> {
+        return .multP(
+            pf: f,
+            input: self
+        )
+    }
+    static func point(_ a: A) -> Parser<A> {
+        return .nilP(.some(a))
+    }
+    static func empty() -> Parser<A> {
+        return .nilP(nil)
+    }
+    static func <|>(lhs: Parser<A>, rhs: Parser<A>) -> Parser<A> {
+        return lhs.plus(rhs)
+    }
+    func plus(_ b: Parser<A>) -> Parser<A> {
+        return .altP(attempt: self, fallback: b)
+    }
+    func many() -> Parser<[A]> {
+        return .bindP(
+            pIn: optional(),
+            inToPa: {
+                $0.map{ x in
+                    self.many().map{ [x] + $0 }
+                } ?? Parser<[A]>.point([])
+            }
+        )
+    }
+    func optional() -> Parser<A?> {
+        return map{ .some($0) } <|> Parser<A?>.point(nil)
     }
 }
-struct MultP<I, O>: Parser {
-    typealias A = O
-    
-    let p1: AnyParser<(I) -> O>
-    let p2: AnyParser<I>
-    
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(MultP<I,B>(
-            p1: p1.map{ iToO in { i in f(iToO(i)) } },
-            p2: p2
-        ))
-    }
-}
-struct BindP<I, O>: Parser {
-    typealias A = O
-    
-    let p1: AnyParser<I>
-    let f: (I) -> AnyParser<O>
-    
-    func map<B>(_ f: @escaping (A) -> B) -> AnyParser<B> {
-        return AnyParser<B>(BindP<I, B>(
-            p1: p1,
-            f: { p1a in self.f(p1a).map(f) }
-        ))
-    }
-}
+
