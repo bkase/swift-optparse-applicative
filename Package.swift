@@ -7,6 +7,8 @@ let package = Package(
     targets: [],
     dependencies: [
         .Package(url: "https://github.com/antitypical/Result.git",
-                 majorVersion: 3)
+                 majorVersion: 3),
+        .Package(url: "https://github.com/typelift/Operadics.git",
+                 majorVersion: 0)
     ]
 )

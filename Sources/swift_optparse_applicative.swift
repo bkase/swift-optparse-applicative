@@ -1,9 +1,16 @@
+import Operadics
+
+struct Sample {
+    let hello: String
+    let quiet: Bool
+}
+
 struct swift_optparse_applicative {
 
     var text = "Hello, World!"
     
     func foo() {
-        _ = Nel.one(5)
-        _ = Nel.one(6)
+        let p: Parser<Sample> =
+            curry(Sample.init) <^> .nilP("world") <*> .nilP(true)
     }
 }

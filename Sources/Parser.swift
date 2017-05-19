@@ -7,50 +7,7 @@
 //
 
 import Foundation
-import Result
-
-enum ParseError: Error {
-    case errorMsg(msg: String)
-    case infoMsg(msg: String)
-    case showHelpText
-    case unknownError
-}
-
-// TODO: Make sure this is a good enough representation
-struct CReader<A> {
-    let run: (String) -> Result<A, ParseError>
-    
-    func map<B>(_ f: @escaping (A) -> B) -> CReader<B> {
-        return CReader<B> { s in self.run(s).map(f) }
-    }
-}
-
-typealias OptName = String
-enum OptReader<A> {
-    case OptionReader(ns: [OptName], cr: CReader<A>, e: ParseError)
-    
-    func map<B>(_ f: @escaping (A) -> B) -> OptReader<B> {
-        switch self {
-        case let .OptionReader(ns: ns, cr: cr, e: e):
-            return .OptionReader(ns: ns, cr: cr.map(f), e: e)
-        }
-    }
-}
-struct OptProperties {
-    let help: String
-    let metaVar: String
-    let showDefault: String?
-}
-struct Opt<A> {
-    let main: OptReader<A>
-    let metadata: OptProperties
-    
-    func map<B>(_ f: @escaping (A) -> B) -> Opt<B> {
-        return Opt<B>(main: main.map(f), metadata: metadata)
-    }
-}
-
-infix operator <|>: AdditionPrecedence
+import Operadics
 
 indirect enum Parser<A> {
     case nilP(A?)
@@ -98,10 +55,25 @@ indirect enum Parser<A> {
             )
         }
     }
+    
+    var defaultValue: A? {
+        switch self {
+        case let .nilP(r): return r
+        case     .optP(_): return .none
+        case let .altP(attempt, fallback):
+            return attempt.defaultValue ?? fallback.defaultValue
+        case let ._multP(pf, input):
+            return pf.defaultValue <*> input.defaultValue
+        case let ._bindP(pIn, inToPa):
+            return pIn.defaultValue.flatMap{ i in inToPa(i).defaultValue }
+        }
+    }
 }
 
+// MARK -- Methods
+
 extension Parser {
-    func ap<T>(f: Parser<(A) -> T>) -> Parser<T> {
+    func ap<T>(_ f: Parser<(A) -> T>) -> Parser<T> {
         return .multP(
             pf: f,
             input: self
@@ -113,9 +85,7 @@ extension Parser {
     static func empty() -> Parser<A> {
         return .nilP(nil)
     }
-    static func <|>(lhs: Parser<A>, rhs: Parser<A>) -> Parser<A> {
-        return lhs.plus(rhs)
-    }
+
     func plus(_ b: Parser<A>) -> Parser<A> {
         return .altP(attempt: self, fallback: b)
     }
@@ -134,3 +104,14 @@ extension Parser {
     }
 }
 
+// MARK -- Operators
+
+func <|><A>(lhs: Parser<A>, rhs: Parser<A>) -> Parser<A> {
+    return lhs.plus(rhs)
+}
+func <^><A, B>(lhs: @escaping (A) -> B, rhs: Parser<A>) -> Parser<B> {
+    return rhs.map(lhs)
+}
+func <*><A, B>(lhs: Parser<(A) -> B>, rhs: Parser<A>) -> Parser<B> {
+    return rhs.ap(lhs)
+}

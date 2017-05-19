@@ -2,6 +2,12 @@
   "autoPin": true,
   "pins": [
     {
+      "package": "Operadics",
+      "reason": null,
+      "repositoryURL": "https://github.com/typelift/Operadics.git",
+      "version": "0.2.2"
+    },
+    {
       "package": "Result",
       "reason": null,
       "repositoryURL": "https://github.com/antitypical/Result.git",
