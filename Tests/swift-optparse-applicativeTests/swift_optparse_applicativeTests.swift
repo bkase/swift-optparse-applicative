@@ -1,6 +1,7 @@
 import XCTest
 @testable import swift_optparse_applicative
 import Operadics
+import func Swiftz.curry
 
 struct Sample {
     let hello: String
@@ -9,7 +10,7 @@ struct Sample {
 
 class swift_optparse_applicativeTests: XCTestCase {
     func testParserCombinatorCompiles() {
-        let p: Parser<[String]> = Parser.point(5).many().map{ $0.map{ x in "\(x)" } }
+        let p: Parser<[String]> = Parser.pure(5).many().fmap{ $0.fmap{ x in "\(x)" } }
         _ = p
     }
     

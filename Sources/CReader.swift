@@ -7,7 +7,8 @@
 //
 
 import Foundation
-import Result
+import enum Swiftx.Either
+import Swiftz
 
 enum ParseError: Error {
     case errorMsg(msg: String)
@@ -17,10 +18,16 @@ enum ParseError: Error {
 }
 
 // TODO: Make sure this is a good enough representation
-struct CReader<A> {
-    let run: (String) -> Result<A, ParseError>
+struct CReader<Value> {
+    let run: (String) -> Either<ParseError, A>
+}
+
+extension CReader {
+    public typealias A = Value
+    public typealias B = Any
+    public typealias FB = OptReader<B>
     
-    func map<B>(_ f: @escaping (A) -> B) -> CReader<B> {
-        return CReader<B> { s in self.run(s).map(f) }
+    func fmap<B>(_ f: @escaping (A) -> B) -> CReader<B> {
+        return CReader<B> { s in self.run(s).fmap(f) }
     }
 }

@@ -8,52 +8,29 @@
 
 import Foundation
 import Operadics
+import Swiftx
 
-indirect enum Parser<A> {
-    case nilP(A?)
-    case optP(Opt<A>)
-    case altP(attempt: Parser<A>, fallback: Parser<A>)
-    case _multP(pf: Parser<(Any) -> A>, input: Parser<Any>)
-    case _bindP(pIn: Parser<Any>, inToPa: (Any) -> Parser<A>)
+indirect enum Parser<Value> {
+    case nilP(Value?)
+    case optP(Opt<Value>)
+    case altP(attempt: Parser<Value>, fallback: Parser<Value>)
+    case _multP(pf: Parser<(Any) -> Value>, input: Parser<Any>)
+    case _bindP(pIn: Parser<Any>, inToPa: (Any) -> Parser<Value>)
     
-    static func multP<In>(pf: Parser<(In) -> A>, input: Parser<In>) -> Parser<A> {
+    static func multP<In>(pf: Parser<(In) -> Value>, input: Parser<In>) -> Parser<Value> {
         return ._multP(
-            pf: pf.map{ inToA in
+            pf: pf.fmap{ inToA in
                 { any in inToA(any as! In) }
             },
-            input: input.map{ $0 as Any }
+            input: input.fmap{ $0 as Any }
         )
     }
     
-    static func bindP<In>(pIn: Parser<In>, inToPa: @escaping (In) -> Parser<A>) -> Parser<A> {
+    static func bindP<In>(pIn: Parser<In>, inToPa: @escaping (In) -> Parser<Value>) -> Parser<Value> {
         return ._bindP(
-            pIn: pIn.map{ $0 as Any },
+            pIn: pIn.fmap{ $0 as Any },
             inToPa: { any in inToPa(any as! In) }
         )
-    }
-    
-    func map<B>(_ f: @escaping (A) -> B) -> Parser<B> {
-        switch self {
-        case let .nilP(v):
-            return .nilP(v.map(f))
-        case let .optP(opt):
-            return .optP(opt.map(f))
-        case let .altP(attempt, fallback):
-            return .altP(
-                attempt: attempt.map(f),
-                fallback: fallback.map(f)
-            )
-        case let ._multP(pf, input):
-            return ._multP(
-                pf: pf.map{ inToA in { i in f(inToA(i)) } },
-                input: input
-            )
-        case let ._bindP(pIn, inToPa):
-            return ._bindP(
-                pIn: pIn,
-                inToPa: { i in inToPa(i).map(f) }
-            )
-        }
     }
     
     var defaultValue: A? {
@@ -70,48 +47,92 @@ indirect enum Parser<A> {
     }
 }
 
-// MARK -- Methods
+extension Parser /*: Functor */ {
+    public typealias A = Value
+    public typealias B = Any
+    public typealias FB = Parser<B>
+    
+    public func fmap<B>(_ f : @escaping (A) -> B) -> Parser<B> {
+        switch self {
+        case let .nilP(v):
+            return .nilP(v.fmap(f))
+        case let .optP(opt):
+            return .optP(opt.fmap(f))
+        case let .altP(attempt, fallback):
+            return .altP(
+                attempt: attempt.fmap(f),
+                fallback: fallback.fmap(f)
+            )
+        case let ._multP(pf, input):
+            return ._multP(
+                pf: pf.fmap{ inToA in { i in f(inToA(i)) } },
+                input: input
+            )
+        case let ._bindP(pIn, inToPa):
+            return ._bindP(
+                pIn: pIn,
+                inToPa: { i in inToPa(i).fmap(f) }
+            )
+        }
+    }
+    
+    static func <^> <B>(_ f : @escaping (A) -> B, p : Parser<A>) -> Parser<B> {
+        return p.fmap(f)
+    }
+}
 
-extension Parser {
-    func ap<T>(_ f: Parser<(A) -> T>) -> Parser<T> {
+extension Parser /*: Pointed */ {
+    static func pure(_ x: A) -> Parser<Value> {
+        return .nilP(.some(x))
+    }
+}
+
+extension Parser /*: Applicative*/ {
+    public typealias FA = Parser<Value>
+    public typealias FAB = Parser<(A) -> B>
+    
+    public func ap<B>(_ f : Parser<(A) -> B>) -> Parser<B> {
         return .multP(
             pf: f,
             input: self
         )
+        
     }
-    static func point(_ a: A) -> Parser<A> {
-        return .nilP(.some(a))
+    
+    static func <*><B>(lhs: Parser<(A) -> B>, rhs: Parser<A>) -> Parser<B> {
+        return rhs.ap(lhs)
     }
-    static func empty() -> Parser<A> {
+}
+
+extension Parser /*: Alternative*/ {
+	static func empty() -> Parser<A> {
         return .nilP(nil)
     }
 
     func plus(_ b: Parser<A>) -> Parser<A> {
         return .altP(attempt: self, fallback: b)
     }
+    
     func many() -> Parser<[A]> {
         return .bindP(
             pIn: optional(),
             inToPa: {
-                $0.map{ x in
-                    self.many().map{ [x] + $0 }
-                } ?? Parser<[A]>.point([])
+                $0.fmap{ (x: A) -> Parser<[A]> in
+                    self.many().fmap{ [x] + $0 }
+                } ?? Parser<[A]>.pure([])
             }
         )
     }
-    func optional() -> Parser<A?> {
-        return map{ .some($0) } <|> Parser<A?>.point(nil)
+ 
+	static func <|>(lhs: Parser<A>, rhs: Parser<A>) -> Parser<A> {
+	    return lhs.plus(rhs)
+	}
+}
+
+// MARK -- Methods
+
+extension Parser {
+    func optional() -> Parser<Value?> {
+        return self.fmap{ .some($0) } <|> Parser<Value?>.pure(nil)
     }
-}
-
-// MARK -- Operators
-
-func <|><A>(lhs: Parser<A>, rhs: Parser<A>) -> Parser<A> {
-    return lhs.plus(rhs)
-}
-func <^><A, B>(lhs: @escaping (A) -> B, rhs: Parser<A>) -> Parser<B> {
-    return rhs.map(lhs)
-}
-func <*><A, B>(lhs: Parser<(A) -> B>, rhs: Parser<A>) -> Parser<B> {
-    return rhs.ap(lhs)
 }
