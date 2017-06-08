@@ -9,6 +9,8 @@ let package = Package(
         .Package(url: "https://github.com/typelift/Operadics.git",
                  majorVersion: 0),
         .Package(url: "https://github.com/typelift/Swiftz.git",
-                 majorVersion: 0)
+                 majorVersion: 0),
+        .Package(url: "https://github.com/bkase/DoctorPretty.git",
+                 majorVersion: 0, minor: 3)
     ]
 )

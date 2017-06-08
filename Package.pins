@@ -2,16 +2,22 @@
   "autoPin": true,
   "pins": [
     {
+      "package": "Algebra",
+      "reason": null,
+      "repositoryURL": "https://github.com/typelift/Algebra.git",
+      "version": "0.2.0"
+    },
+    {
+      "package": "DoctorPretty",
+      "reason": null,
+      "repositoryURL": "https://github.com/bkase/DoctorPretty.git",
+      "version": "0.3.0"
+    },
+    {
       "package": "Operadics",
       "reason": null,
       "repositoryURL": "https://github.com/typelift/Operadics.git",
       "version": "0.2.2"
-    },
-    {
-      "package": "Result",
-      "reason": null,
-      "repositoryURL": "https://github.com/antitypical/Result.git",
-      "version": "3.2.1"
     },
     {
       "package": "Swiftx",
